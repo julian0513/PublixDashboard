@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:16
+    container_name: publixai-db
+    environment:
+      POSTGRES_DB: publixai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      TZ: America/New_York
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+      - ./scripts/db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d publixai"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  ml:
+    build:
+      context: ./ml_service/app
+      dockerfile: Dockerfile
+    container_name: publixai-ml
+    env_file: ./ml_service/app/.env
+    environment:
+      # ensure the in-container URL points at the db service
+      DATABASE_URL: postgresql://ml_ro:change-me@db:5432/publixai
+      TZ: America/New_York
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy

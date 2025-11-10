@@ -1,0 +1,137 @@
+= Publix AI Dashboard — Architecture & Operations Guide
+Julian Perez
+:revnumber: 1.0
+:revdate: 2025-11-10
+:toc:
+:toclevels: 3
+:sectnums:
+:icons: font
+:source-highlighter: rouge
+:docinfo: shared
+:imagesdir: images
+
+== Purpose & scope
+Single-page overview of how the pieces fit together and how to operate the system day-to-day.
+
+== High-level architecture
+++++
+<div class="mermaid">
+graph LR
+  subgraph Client
+    FE[Frontend Vite + React + Tailwind]
+  end
+  subgraph Services
+    API[Spring Boot Backend<br/>/api/* public]
+    ML[FastAPI ML Service<br/>/ml/* private]
+    DB[PostgreSQL]
+  end
+  FE -->|HTTPS /api| API
+  API -->|WebClient + X-ML-Secret| ML
+  API -->|JPA Hibernate| DB
+  ML -->|SQLAlchemy/psycopg| DB
+</div>
+++++
+
+== Contracts (exact)
+.Backend → ML (via `MlClient`)
+- **Forecast**: `GET /ml/forecast?start=YYYY-MM-DD&end=YYYY-MM-DD&mode=seed|live&top_k=K`
+- **Train**: `POST /ml/train?mode=seed|live`
+- Header: `X-ML-Secret: <value>` (configured in `application-*.properties`).
+
+.Backend public endpoints
+- `GET /api/forecast?start&end&topK&mode` → `ForecastResponse{ startDate, endDate, generatedAt, items[] }`
+- `GET /api/sales?date=YYYY-MM-DD` → list of `SaleRecord`
+- `POST /api/sales` → create sale `{ productName, units, date }`
+- `DELETE /api/sales/{id}` → idempotent delete
+- `POST /api/ml/train?mode=seed|live` → forwards ML summary
+
+[NOTE]
+All forecasts are **EOD totals**. The service clips negatives to 0 and sorts by `predictedUnits` (desc). Confidence is normalized 0..1 by the ML service and passed through.
+
+== Sequence — range forecast
+++++
+<div class="mermaid">
+sequenceDiagram
+  participant FE as Frontend
+  participant API as Spring API
+  participant ML as FastAPI ML
+  participant DB as PostgreSQL
+
+  FE->>API: GET /api/forecast?start=&end=&mode=seed|live&topK=
+  API->>ML: GET /ml/forecast?start=&end=&mode=&top_k= (X-ML-Secret)
+  ML->>DB: SELECT ... (features + model or baseline)
+  DB-->>ML: rows
+  ML-->>API: {items: [...], topK, dateRange, modeUsed}
+  API-->>FE: {startDate, endDate, generatedAt, items}
+</div>
+++++
+
+== Data model
+- `sales`:
+* `id uuid` (default `gen_random_uuid()`), `product_name`, `units`, `date`, `created_at timestamptz`
+* Indexes: `idx_sales_date`, `idx_sales_product`, `idx_sales_product_date`, `idx_sales_date_created_at`, `idx_sales_created_at`
+* **V5**: removed unique `(product_name, date)` to support intraday partials.
+- `sales_change_log` (append-only audit):
+* `sale_id → sales(id)`, `product_name`, `date`, `old_units`, `new_units`, `changed_at`, `undone_at`
+* Partial index `idx_scl_prod_date_time_pending` for “latest non-undone” lookups.
+* `idx_scl_sale_id` for audit by sale id.
+
+== ML details (FastAPI + scikit-learn)
+- **Training** (`POST /ml/train?mode=seed|live`)
+* Pipeline: `OneHotEncoder(handle_unknown='ignore', dense) + GradientBoostingRegressor`
+* Windows:
+- *seed*: `2015-10-01…2024-10-31` → `history_seed.joblib` (+ `.meta.json`)
+- *live*: `2015-10-01…today` → `model_live.joblib` (+ `.meta.json`)
+* Metadata: feature lists, row counts, validation/test metrics, *frozen product universe* (prevents baseline bleed)
+- **Range forecast** (`GET /ml/forecast`)
+* Sums per-day EOD predictions across `[start, end]`, ranks, returns top-K
+- **Intraday (single date)** (`GET /ml/forecast_intraday`) *(optional/admin)*
+* Blends model prior with time-scaled partials; floors early-day fraction; never under observed partials
+
+== Operations (local)
+.**Train (seed)**
+[source,powershell]
+----
+cd "{project-root}"
+curl.exe -X POST -H "X-ML-Secret: dev-secret" "http://localhost:8000/ml/train?mode=seed"
+----
+
+.**Forecast (range)**
+[source,powershell]
+----
+cd "{project-root}"
+curl.exe -H "X-ML-Secret: dev-secret" ^
+  "http://localhost:8000/ml/forecast?start=2025-10-01&end=2025-10-31&mode=seed&top_k=10"
+----
+
+.**Enter a sale**
+[source,powershell]
+----
+cd "{project-root}"
+curl.exe -X POST "http://localhost:8080/api/sales" ^
+  -H "Content-Type: application/json" ^
+  -d "{ \"productName\":\"Kit Kat\", \"units\":25, \"date\":\"2025-10-12\" }"
+----
+
+== Security & robustness
+- ML calls require `X-ML-Secret` (configured via `ML_SECRET`; enforced in ML and sent by Spring `WebClient`).
+- CORS restricted by `app.cors.allowed-origins` (dev: `http://localhost:5173`).
+- Uniform JSON errors via `ApiExceptionHandler`.
+- Timeouts & bounded buffers on ML `WebClient` (see `AppConfig.mlWebClient()`).
+- Negatives clipped, null-safe ranking, strict date validation.
+
+== Building this doc to HTML (Mermaid included)
+[source,powershell]
+----
+cd "{project-root}"
+asciidoctor -a docinfo=shared publix-ai-dashboard.adoc
+----
+
+== Troubleshooting
+- **Mermaid text missing in PDF**: Use HTML with the included `docinfo.html`, or render via Kroki as PNG/SVG during build for PDF export.
+- **Kroki fallback for offline builds** (optional): `asciidoctor -r asciidoctor-kroki -a kroki-fetch-diagram=true -a kroki-server-url=https://kroki.io publix-ai-dashboard.adoc`
+
+== Glossary
+- **Seed model**: Frozen baseline trained on 2015–2024 October rows.
+- **Live model**: Updated model including new rows you enter.
+- **EOD**: End-of-day totals by store close (default 22:00 ET).

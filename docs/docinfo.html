@@ -1,0 +1,13 @@
+<!-- Mermaid loader for Asciidoctor HTML output -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+    // allow <div class="mermaid"> blocks coming from Asciidoctor passthrough
+    mermaid.initialize({
+        startOnLoad: true,
+        securityLevel: 'loose' // allow line breaks and HTML labels in diagrams
+    });
+</script>
+<style>
+    /* optional: keep diagrams readable in both light/dark */
+    .mermaid { margin: 1rem 0; }
+</style>

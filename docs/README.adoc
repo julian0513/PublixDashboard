@@ -1,0 +1,182 @@
+= Publix AI Dashboard
+Julian Perez
+:revnumber: 1.0
+:revdate: 2025-11-10
+:toc: macro
+:icons: font
+:sectanchors:
+:sectnums:
+:source-highlighter: rouge
+:docinfo: shared
+:project-root: C:\Coding\Publix AI Dashboard
+:tz: America/New_York
+
+toc::[]
+
+== About Publix AI Dashboard
+A focused retail (Publix setting) analytics tool that forecasts **end-of-day (EOD)** totals for Halloween candy and ranks top sellers, based on a 10-year arbitrary candy sales history.
+
+* **Backend (public API gateway)**: Java Spring Boot — exposes `/api/*` and proxies the ML service.
+* **Machine Learning service**: Python FastAPI — training + inference (scikit-learn).
+* **Database**: PostgreSQL — October sales (2015–2024 seed; supports live updates).
+* **Frontend**: React (Vite + Tailwind) — clean UI for date ranges, training, and quick data entry.
+
+== Highlights
+- EOD forecasts only (closes 22:00 ET by default); negatives clipped to 0.
+- Two modes:
+- *seed* (frozen): 2015-10-01…2024-10-31, stable product universe.
+- *live*: seed + any new rows you add today and beyond.
+- Clean contracts: Spring → ML via `X-ML-Secret`; typed DTOs; uniform JSON errors.
+- Readable, minimal services with explicit validation and guardrails.
+
+== Quickstart (local dev)
+_Prereqs_: Docker Desktop (PostgreSQL), JDK + Maven, Python 3.11+, Node.js + npm.
+
+[NOTE]
+Always run commands in two lines: (1) `cd` to the folder, then (2) run the command.
+
+.**Start PostgreSQL (Docker)**
+[source,powershell]
+----
+cd "{project-root}"
+docker compose up -d db
+----
+
+.**Run the ML service (FastAPI)**
+[source,powershell]
+----
+cd "{project-root}\ml_service\app"
+uvicorn main:app --reload --port 8000
+----
+
+.**Train a model (seed or live)**
+[source,powershell]
+----
+cd "{project-root}"
+curl.exe -X POST -H "X-ML-Secret: dev-secret" "http://localhost:8000/ml/train?mode=seed"
+----
+
+.**Run the Backend (Spring Boot)**
+[source,powershell]
+----
+cd "{project-root}\backend"
+mvn spring-boot:run
+----
+
+.**Run the Frontend (Vite)**
+[source,powershell]
+----
+cd "{project-root}\frontend"
+npm run dev
+----
+
+== API overview (public backend)
+Base URL defaults to `http://localhost:8080/api`.
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query/body | Purpose
+
+|GET `/forecast`
+|`start`, `end` (`YYYY-MM-DD`), `topK` (1..100), `mode` (`seed|live`)
+|Get ranked forecast over a date range (EOD totals summed across days).
+
+|GET `/sales`
+|`date` (`YYYY-MM-DD`)
+|List all sales records for a specific calendar day.
+
+|POST `/sales`
+|`{ productName, units, date }`
+|Create a new sale entry (intraday supported; audited via change log).
+
+|DELETE `/sales/{id}`
+|—|Idempotent delete (no 500 on already-removed IDs).
+
+|POST `/ml/train`
+|`mode` (`seed|live`)
+|Ask ML service to train; backend forwards the response.
+|===
+
+[example,json]
+.Backend response shape (ForecastResponse)
+----
+{
+  "startDate": "2025-10-01",
+  "endDate": "2025-10-31",
+  "generatedAt": "2025-10-01T13:05:47.331Z",
+  "items": [
+    { "productName": "Kit Kat", "predictedUnits": 1234.0, "confidence": 0.82 },
+    { "productName": "Snickers", "predictedUnits": 1187.0, "confidence": 0.79 }
+  ]
+}
+----
+
+== ML service (private)
+Exposed locally at `http://localhost:8000` and protected by `X-ML-Secret`.
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query/body | Purpose
+
+|POST `/ml/train`
+|`mode` = `seed|live`
+|Train scikit-learn pipeline (OneHotEncoder + GradientBoostingRegressor). Artifacts: `history_seed.joblib`, `model_live.joblib` (+ `.meta.json`).
+
+|GET `/ml/forecast`
+|`start`, `end`, `top_k`, `mode` (`seed|live`)
+|Range forecast: per-day EOD predictions aggregated and ranked.
+
+|GET `/ml/forecast_intraday`
+|`date_str`, `top_k`, `mode` (`seed|live`), `open_hour`, `close_hour`, `as_of` (ISO)
+|Single-day **intraday** EOD forecast blending model prior with partials. (Not required by the frontend today; available for admin/testing.)
+
+|GET `/ml/forecast_historical`
+|`start`, `end`, `top_k`
+|QA-only math baseline from the seed window (no model).
+|===
+
+== Configuration
+.Backend (`application-*.properties`)
+- `app.cors.allowed-origins` — frontend origin(s).
+- `ml.base-url`, `ml.secret`, `ml.timeout-ms` — ML client.
+- `spring.datasource.*` — PostgreSQL connection (dev/prod profiles).
+- `server.port` — defaults to `8080`.
+
+.ML service `.env` (defaults shown)
+- `TZ=America/New_York`
+- `DATABASE_URL=postgresql://ml_ro:change-me@localhost:5432/publixai`
+- `ML_SECRET=dev-secret`
+- `STORE_OPEN_HOUR=8` / `STORE_CLOSE_HOUR=22`
+- `INTRADAY_WEIGHT_ACCEL=1.25` (weights model→partials later in day)
+- `INTRADAY_MIN_FRAC=0.000001` (numeric floor early in day)
+
+== Data model (PostgreSQL)
+- `sales` — `id uuid`, `product_name`, `units`, `date`, `created_at`.
+- `sales_change_log` — audit: `sale_id`, `old_units`, `new_units`, `changed_at`, `undone_at`.
+
+V5 migration **removes** the unique `(product_name, date)` constraint and replaces it with non-unique indexes to support **multiple intraday entries** per product per day.
+
+== Architecture (at a glance)
+++++
+<div class="mermaid">
+graph LR
+  FE[Frontend React/Vite/Tailwind]
+  API[Spring Boot API<br/>/api/*]
+  ML[FastAPI ML Service<br/>/ml/*]
+  DB[PostgreSQL]
+
+  FE -->|HTTPS /api| API
+  API -->|JPA read/write| DB
+  API -->|HTTP + X-ML-Secret| ML
+  ML -->|psycopg/SQLAlchemy read-only: ml_ro| DB
+</div>
+++++
+
+
+== Building this README to HTML (Mermaid included)
+[source,powershell]
+----
+cd "{project-root}"
+asciidoctor -a docinfo=shared README.adoc
+----
+This uses the included `docinfo.html` to load Mermaid client-side (no external Asc

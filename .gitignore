@@ -27,3 +27,42 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+
+cd "C:\Coding\Publix AI Dashboard"
+@'
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / project files
+.idea/
+*.iml
+.vscode/
+*.ipr
+*.iws
+qodana.yaml
+
+# Java / Maven
+**/target/
+*.log
+
+# Node (frontend)
+frontend/node_modules/
+frontend/dist/
+
+# Python (ML)
+ml_service/.venv/
+**/__pycache__/
+**/*.pyc
+
+# Env & secrets
+.env
+**/.env
+
+# Data & temp
+data/
+backup.sql
+
+# Misc
+*.pid
+'@ | Set-Content -NoNewline .gitignore

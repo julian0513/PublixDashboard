@@ -1,0 +1,12 @@
+DO $$
+    BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ml_ro') THEN
+            CREATE ROLE ml_ro LOGIN PASSWORD 'app';
+        END IF;
+    END $$;
+
+GRANT CONNECT ON DATABASE publixai TO ml_ro;
+GRANT USAGE   ON SCHEMA public TO ml_ro;
+GRANT SELECT  ON ALL TABLES IN SCHEMA public TO ml_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ml_ro;
+

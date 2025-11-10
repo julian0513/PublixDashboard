@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <springProperty scope="context" name="APP" source="spring.application.name" defaultValue="app"/>
+    <property name="PATTERN" value="[%d{HH:mm:ss}] %-5level ${APP} — %msg%n"/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder><pattern>${PATTERN}</pattern></encoder>
+    </appender>
+
+    <!-- keep it informative without spam -->
+    <logger name="org.hibernate.SQL" level="INFO"/>
+    <logger name="org.springframework" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+</configuration>
