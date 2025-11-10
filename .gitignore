@@ -66,3 +66,13 @@ backup.sql
 # Misc
 *.pid
 '@ | Set-Content -NoNewline .gitignore
+
+cd "C:\Coding\Publix AI Dashboard"
+@'
+# Frontend local env
+frontend/.env.local
+
+# ML artifacts (models/metadata)
+ml_service/app/*.joblib
+ml_service/app/*.meta.json
+'@ | Add-Content .gitignore
