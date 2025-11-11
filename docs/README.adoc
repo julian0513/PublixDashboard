@@ -179,15 +179,15 @@ ifndef::env-github[]
 ++++
 <div class="mermaid">
 graph LR
-  FE[Frontend React/Vite/Tailwind]
-  API[Spring Boot API<br/>/api/*]
-  ML[FastAPI ML Service<br/>/ml/*]
+  FE["Frontend React/Vite/Tailwind"]
+  API["Spring Boot API\n/api/*"]
+  ML["FastAPI ML Service\n/ml/*"]
   DB[PostgreSQL]
 
   FE -->|HTTPS /api| API
   API -->|JPA read/write| DB
   API -->|HTTP + X-ML-Secret| ML
-  ML -->|psycopg/SQLAlchemy read-only: ml_ro| DB
+  ML -->|psycopg + SQLAlchemy read-only ml_ro| DB
 </div>
 ++++
 endif::env-github[]

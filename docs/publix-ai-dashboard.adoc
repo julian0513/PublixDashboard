@@ -23,17 +23,17 @@ ifndef::env-github[]
 <div class="mermaid">
 graph LR
   subgraph Client
-    FE[Frontend Vite + React + Tailwind]
+    FE["Frontend Vite + React + Tailwind"]
   end
   subgraph Services
-    API[Spring Boot Backend<br/>/api/* public]
-    ML[FastAPI ML Service<br/>/ml/* private]
+    API["Spring Boot Backend\n/api/* public"]
+    ML["FastAPI ML Service\n/ml/* private"]
     DB[PostgreSQL]
   end
   FE -->|HTTPS /api| API
   API -->|WebClient + X-ML-Secret| ML
   API -->|JPA Hibernate| DB
-  ML -->|SQLAlchemy/psycopg| DB
+  ML -->|SQLAlchemy + psycopg| DB
 </div>
 ++++
 endif::env-github[]
