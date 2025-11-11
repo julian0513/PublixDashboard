@@ -157,6 +157,24 @@ Exposed locally at `http://localhost:8000` and protected by `X-ML-Secret`.
 V5 migration **removes** the unique `(product_name, date)` constraint and replaces it with non-unique indexes to support **multiple intraday entries** per product per day.
 
 == Architecture (at a glance)
+ifdef::env-github[]
+++++
+<pre class="mermaid">
+graph LR
+  FE[Frontend React/Vite/Tailwind]
+  API[Spring Boot API<br/>/api/*]
+  ML[FastAPI ML Service<br/>/ml/*]
+  DB[PostgreSQL]
+
+  FE -->|HTTPS /api| API
+  API -->|JPA read/write| DB
+  API -->|HTTP + X-ML-Secret| ML
+  ML -->|psycopg/SQLAlchemy read-only: ml_ro| DB
+</pre>
+++++
+endif::env-github[]
+
+ifndef::env-github[]
 ++++
 <div class="mermaid">
 graph LR
@@ -171,6 +189,7 @@ graph LR
   ML -->|psycopg/SQLAlchemy read-only: ml_ro| DB
 </div>
 ++++
+endif::env-github[]
 
 
 == Building this README to HTML (Mermaid included)

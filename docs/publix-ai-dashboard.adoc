@@ -49,6 +49,26 @@ graph LR
 All forecasts are **EOD totals**. The service clips negatives to 0 and sorts by `predictedUnits` (desc). Confidence is normalized 0..1 by the ML service and passed through.
 
 == Sequence — range forecast
+ifdef::env-github[]
+++++
+<pre class="mermaid">
+sequenceDiagram
+  participant FE as Frontend
+  participant API as Spring API
+  participant ML as FastAPI ML
+  participant DB as PostgreSQL
+
+  FE->>API: GET /api/forecast?start=&end=&mode=seed|live&topK=
+  API->>ML: GET /ml/forecast?start=&end=&mode=&top_k= (X-ML-Secret)
+  ML->>DB: SELECT ... (features + model or baseline)
+  DB-->>ML: rows
+  ML-->>API: {items: [...], topK, dateRange, modeUsed}
+  API-->>FE: {startDate, endDate, generatedAt, items}
+</pre>
+++++
+endif::env-github[]
+
+ifndef::env-github[]
 ++++
 <div class="mermaid">
 sequenceDiagram
@@ -65,6 +85,7 @@ sequenceDiagram
   API-->>FE: {startDate, endDate, generatedAt, items}
 </div>
 ++++
+endif::env-github[]
 
 == Data model
 - `sales`:
