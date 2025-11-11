@@ -159,20 +159,6 @@ V5 migration **removes** the unique `(product_name, date)` constraint and replac
 == Architecture (at a glance)
 ifdef::env-github[]
 image::https://mermaid.ink/img/pako:TY7BisIwEIbvPsWcXULusggVt-hSoWuKLBRZYjq0gTQJ06AU-vAm6WVvM_z_fN_0JP0A1XUDUH61JTkb0HZwRakCv-mAvJHavLTt7rFS1OdWeNK2h4NzIe2fD-J7Lr3m29S4VG0ppxCDOIJAemqFa2c0a-V4aGs3hZ5Q_FT3TTYDY_vl1DS1gMRaEnn15eS7LoBQdvxF8aUlIv6F6Qw-4JddKiZQEYYluvMvOffTrJzvebQVRg04zpnFnDXzDkbzRy4T3w==[Architecture at a glance,align=center]
-++++
-<pre class="mermaid">
-graph LR
-  FE[Frontend React/Vite/Tailwind]
-  API[Spring Boot API<br/>/api/*]
-  ML[FastAPI ML Service<br/>/ml/*]
-  DB[PostgreSQL]
-
-  FE -->|HTTPS /api| API
-  API -->|JPA read/write| DB
-  API -->|HTTP + X-ML-Secret| ML
-  ML -->|psycopg/SQLAlchemy read-only: ml_ro| DB
-</pre>
-++++
 endif::env-github[]
 
 ifndef::env-github[]
