@@ -14,6 +14,11 @@ Julian Perez
 Single-page overview of how the pieces fit together and how to operate the system day-to-day.
 
 == High-level architecture
+ifdef::env-github[]
+image::https://mermaid.ink/img/pako:TY9Ra8MgFIXf8yvu80bIHxiFpGvoRgppDdsg9EHtxcqsitqOQn78bgxjfVLv-TznXBW4P0N3KADiVaj8WhuNNtEEoN2MbXA2oT3Bh04Iz3BALhOdA9fmR9vTkUCSHw0YhpuWGLNF3b-NzAdtFTTOJWi4_Cb-RYRqVXGvqyfwV2G0PGZ8140tj4l-0fXPaYEvZmaDvvGEC_zajL2LSQVk--6_SLuBslxN22HoGcwZ09yiyF2y8oliWZL2-Cp3XclQBkwTRT5Q730NWy0wWAqcKKyY62WJ4mojz3i5Vz7epfMq678=[High-level architecture,align=center]
+endif::env-github[]
+
+ifndef::env-github[]
 ++++
 <div class="mermaid">
 graph LR
@@ -31,6 +36,7 @@ graph LR
   ML -->|SQLAlchemy/psycopg| DB
 </div>
 ++++
+endif::env-github[]
 
 == Contracts (exact)
 .Backend → ML (via `MlClient`)
@@ -50,6 +56,7 @@ All forecasts are **EOD totals**. The service clips negatives to 0 and sorts by 
 
 == Sequence — range forecast
 ifdef::env-github[]
+image::https://mermaid.ink/img/pako:fY9BT4QwEIXv_Io5kTUCeycBs0gxRkhWWRMTY0yls6QRWmy7etD9705ZvOzB20ze-968sfhxQNVhKXlv-BgATNw42cmJKwcVA26hMlo5VOJM3GxvvdpORqreb2d6U88wt847m_pMLgsvb7V1vcH2vg5Ir1ic5-RO4YbtYM0nud5rgx1lXFlHcBZSjywctcDMIoqfQX5i6PR0lxFOJPFNveDj8A_todf3DFZPcVPHLXYG3QVl0JLnZZFCy2p2vYMkSWC1R-4OBi1cgocH0AbeuMVBKvRQWcTLYaO_7Cnl75Nv6XC0KTxT0ksEvmsEgjt84KrHaA58tCiOywPEVYywuXFJvgio9WnoUaGhSWxcBHPuMfgF[Range forecast sequence,align=center]
 ++++
 <pre class="mermaid">
 sequenceDiagram
