@@ -57,6 +57,22 @@ All forecasts are **EOD totals**. The service clips negatives to 0 and sorts by 
 == Sequence — range forecast
 ifdef::env-github[]
 image::https://mermaid.ink/img/pako:fY9BT4QwEIXv_Io5kTUCeycBs0gxRkhWWRMTY0yls6QRWmy7etD9705ZvOzB20ze-968sfhxQNVhKXlv-BgATNw42cmJKwcVA26hMlo5VOJM3GxvvdpORqreb2d6U88wt847m_pMLgsvb7V1vcH2vg5Ir1ic5-RO4YbtYM0nud5rgx1lXFlHcBZSjywctcDMIoqfQX5i6PR0lxFOJPFNveDj8A_todf3DFZPcVPHLXYG3QVl0JLnZZFCy2p2vYMkSWC1R-4OBi1cgocH0AbeuMVBKvRQWcTLYaO_7Cnl75Nv6XC0KTxT0ksEvmsEgjt84KrHaA58tCiOywPEVYywuXFJvgio9WnoUaGhSWxcBHPuMfgF[Range forecast sequence,align=center]
+++++
+<pre class="mermaid">
+sequenceDiagram
+  participant FE as Frontend
+  participant API as Spring API
+  participant ML as FastAPI ML
+  participant DB as PostgreSQL
+
+  FE->>API: GET /api/forecast?start=&end=&mode=seed|live&topK=
+  API->>ML: GET /ml/forecast?start=&end=&mode=&top_k= (X-ML-Secret)
+  ML->>DB: SELECT ... (features + model or baseline)
+  DB-->>ML: rows
+  ML-->>API: {items: [...], topK, dateRange, modeUsed}
+  API-->>FE: {startDate, endDate, generatedAt, items}
+</pre>
+++++
 endif::env-github[]
 
 ifndef::env-github[]
