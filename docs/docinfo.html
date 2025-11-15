@@ -1,13 +1,54 @@
-<!-- Mermaid loader for Asciidoctor HTML output -->
+<!--
+  Mermaid Diagram Loader for Asciidoctor HTML Output
+  
+  Purpose:
+    This file is included in Asciidoctor-generated HTML documents to enable
+    client-side rendering of Mermaid diagrams. Mermaid diagrams are defined
+    in AsciiDoc source files using passthrough blocks (++++).
+  
+  How It Works:
+    1. Asciidoctor processes .adoc files and generates HTML
+    2. When -a docinfo=shared is used, this file is automatically included
+    3. Mermaid.js library loads and initializes
+    4. All <div class="mermaid"> blocks are automatically rendered as diagrams
+  
+  Version:
+    Mermaid.js v10.x (latest stable)
+  
+  GitHub Pages Compatibility:
+    This configuration works with GitHub Pages static site hosting.
+    Diagrams render client-side using the Mermaid CDN, requiring no server-side processing.
+  
+  Browser Support:
+    Modern browsers with JavaScript enabled (Chrome, Firefox, Safari, Edge)
+-->
+
+<!-- Load Mermaid.js from CDN -->
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+
 <script>
-    // allow <div class="mermaid"> blocks coming from Asciidoctor passthrough
+    /**
+     * Initialize Mermaid diagram rendering
+     * 
+     * Configuration:
+     * - startOnLoad: Automatically render all mermaid diagrams on page load
+     * - securityLevel: 'loose' allows line breaks and HTML labels in diagrams
+     *   (required for complex diagrams with multi-line labels)
+     */
     mermaid.initialize({
         startOnLoad: true,
-        securityLevel: 'loose' // allow line breaks and HTML labels in diagrams
+        securityLevel: 'loose' // Required for line breaks and HTML labels in diagrams
     });
 </script>
+
 <style>
-    /* optional: keep diagrams readable in both light/dark */
-    .mermaid { margin: 1rem 0; }
+    /**
+     * Mermaid Diagram Styling
+     * 
+     * Ensures diagrams are readable in both light and dark themes.
+     * Provides consistent spacing and visual appearance.
+     */
+    .mermaid {
+        margin: 1rem 0; /* Vertical spacing around diagrams */
+    }
 </style>

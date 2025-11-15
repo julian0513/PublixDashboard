@@ -1,6 +1,5 @@
 package com.julian.publixai.service;
 
-import com.julian.publixai.service.MlClient;
 import com.julian.publixai.dto.ForecastItem;
 import com.julian.publixai.dto.ForecastResponse;
 import org.springframework.http.HttpStatus;
@@ -117,7 +116,6 @@ public class ForecastService {
                 .collect(Collectors.toList());
     }
 
-    @SuppressWarnings("unchecked")
     private static ForecastItem toForecastItem(Object o) {
         if (o instanceof ForecastItem fi) return fi;
         if (o instanceof Map<?, ?> m) {

@@ -1,7 +1,7 @@
 = Publix AI Dashboard — Architecture & Operations Guide
 Julian Perez
 :revnumber: 1.0
-:revdate: 2025-11-10
+:revdate: 2025-01-15
 :toc:
 :toclevels: 3
 :sectnums:
@@ -10,45 +10,211 @@ Julian Perez
 :docinfo: shared
 :imagesdir: images
 
-== Purpose & scope
-Single-page overview of how the pieces fit together and how to operate the system day-to-day.
+== Purpose & Scope
 
-== High-level architecture
+This document provides a comprehensive technical overview of the Publix AI Dashboard architecture, API contracts, data models, and operational procedures. It serves as the definitive reference for developers, operators, and system administrators working with the platform.
+
+The guide covers:
+
+* System architecture and component interactions
+* API contracts and endpoint specifications
+* Data model and database schema
+* Machine learning pipeline details
+* Operational procedures and troubleshooting
+* Security and performance considerations
+
+== High-Level Architecture
+
 ++++
 <div class="mermaid">
 graph LR
   subgraph Client
-    FE[Frontend Vite + React + Tailwind]
+    FE[Frontend Vite + React + Tailwind<br/>Port 5173]
   end
   subgraph Services
-    API[Spring Boot Backend<br/>/api/* public]
-    ML[FastAPI ML Service<br/>/ml/* private]
-    DB[PostgreSQL]
+    API[Spring Boot Backend<br/>Port 8080<br/>/api/* public]
+    ML[FastAPI ML Service<br/>Port 8000<br/>/ml/* private]
+    DB[PostgreSQL<br/>Port 5432]
   end
   FE -->|HTTPS /api| API
   API -->|WebClient + X-ML-Secret| ML
   API -->|JPA Hibernate| DB
-  ML -->|SQLAlchemy/psycopg| DB
+  ML -->|SQLAlchemy/psycopg<br/>read-only: ml_ro| DB
 </div>
 ++++
 
-== Contracts (exact)
-.Backend → ML (via `MlClient`)
-- **Forecast**: `GET /ml/forecast?start=YYYY-MM-DD&end=YYYY-MM-DD&mode=seed|live&top_k=K`
-- **Train**: `POST /ml/train?mode=seed|live`
-- Header: `X-ML-Secret: <value>` (configured in `application-*.properties`).
+=== Component Overview
 
-.Backend public endpoints
-- `GET /api/forecast?start&end&topK&mode` → `ForecastResponse{ startDate, endDate, generatedAt, items[] }`
-- `GET /api/sales?date=YYYY-MM-DD` → list of `SaleRecord`
-- `POST /api/sales` → create sale `{ productName, units, date }`
-- `DELETE /api/sales/{id}` → idempotent delete
-- `POST /api/ml/train?mode=seed|live` → forwards ML summary
+* **Frontend**: React 18 with Vite build tool and Tailwind CSS for styling. Provides interactive dashboards, data visualization, and user interface components.
+* **Backend API**: Spring Boot 3.x application serving as public API gateway. Handles request routing, business logic, data validation, and proxies ML service requests.
+* **ML Service**: Python FastAPI application providing machine learning training and inference capabilities using scikit-learn.
+* **Database**: PostgreSQL 14+ storing all persistent data including sales records, transactions, basket analysis, and discount data.
+
+== API Contracts
+
+=== Backend → ML Service (via `MlClient`)
+
+The backend communicates with the ML service using HTTP requests with authentication.
+
+==== Forecast Request
+[source,http]
+----
+GET /ml/forecast?start=YYYY-MM-DD&end=YYYY-MM-DD&mode=seed|live&top_k=K
+Headers:
+  X-ML-Secret: <configured-secret>
+----
+
+**Response:**
+[source,json]
+----
+{
+  "items": [
+    {
+      "productName": "Kit Kat",
+      "predictedUnits": 1234.0,
+      "confidence": 0.82
+    }
+  ],
+  "topK": 10,
+  "dateRange": {
+    "start": "2025-10-01",
+    "end": "2025-10-31"
+  },
+  "modeUsed": "seed"
+}
+----
+
+==== Train Request
+[source,http]
+----
+POST /ml/train?mode=seed|live
+Headers:
+  X-ML-Secret: <configured-secret>
+----
+
+**Response:** Training summary with metrics and artifact paths.
+
+=== Backend Public Endpoints
+
+All public endpoints are prefixed with `/api` and return JSON responses.
+
+==== Forecast Endpoints
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query Parameters | Response
+
+|GET `/api/forecast`
+|`start` (YYYY-MM-DD), `end` (YYYY-MM-DD), `topK` (1-100), `mode` (seed|live)
+|`ForecastResponse{ startDate, endDate, generatedAt, items[] }`
+
+|GET `/api/sales/trend`
+|`productName`, `mode` (seed|live, optional)
+|Array of `TrendDataPoint{ year, units }`
+|===
+
+==== Sales Endpoints
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query/Body | Response
+
+|GET `/api/sales`
+|`date` (YYYY-MM-DD)
+|Array of `SaleRecord{ id, productName, units, date, createdAt }`
+
+|POST `/api/sales`
+|`{ productName, units, date }`
+|Created `SaleRecord` (HTTP 201)
+
+|DELETE `/api/sales/{id}`
+|—|HTTP 204 (idempotent)
+|===
+
+==== Basket Analysis Endpoints
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query Parameters | Response
+
+|GET `/api/basket/frequently-bought-together`
+|`productName`, `minConfidence` (optional, 0.0-1.0)
+|`BasketAnalysisResponse{ items[], isPredicted }`
+
+|POST `/api/basket/generate-simple-synthetic-data`
+|`forceRegenerate` (optional, boolean)
+|HTTP 201
+
+|POST `/api/basket/generate-sample-data`
+|`startDate`, `endDate`, `transactionsPerDay` (optional)
+|HTTP 201
+|===
+
+==== Discount Analysis Endpoints
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query Parameters | Response
+
+|GET `/api/discounts/effectiveness`
+|`productName`, `startDate`, `endDate` (optional)
+|`DiscountEffectivenessResponse{ items[], optimalDiscountPercent, isPredicted }`
+
+|GET `/api/discounts/optimal`
+|`productName`
+|`{ productName, optimalDiscountPercent, reasoning }`
+
+|GET `/api/discounts/active`
+|`date` (optional, defaults to today)
+|Array of `Discount{ id, productName, discountPercent, startDate, endDate }`
+
+|GET `/api/discounts/active-for-product`
+|`productName`, `date` (optional)
+|Array of `Discount`
+|===
+
+==== Halloween Readiness Endpoints
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query Parameters | Response
+
+|GET `/api/halloween/readiness`
+|`productName`
+|`HalloweenReadinessScore{ totalScore, trendScore, discountScore, basketScore, demandScore, recommendation }`
+|===
+
+==== Yearly Analysis Endpoints
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query Parameters | Response
+
+|GET `/api/yearly/analysis`
+|`productName`
+|Array of `YearlyProductAnalysis{ year, totalUnits, revenue, discounts[], basketItems[], effectiveness[] }`
+|===
+
+==== ML Training Endpoints
+
+[cols="2,2,6",options="header"]
+|===
+|Method & Path | Query Parameters | Response
+
+|POST `/api/ml/train`
+|`mode` (seed|live)
+|ML training summary (forwarded from ML service)
+|===
 
 [NOTE]
-All forecasts are **EOD totals**. The service clips negatives to 0 and sorts by `predictedUnits` (desc). Confidence is normalized 0..1 by the ML service and passed through.
+====
+All forecasts are **EOD totals**. The service clips negatives to 0 and sorts by `predictedUnits` (descending). Confidence is normalized 0..1 by the ML service and passed through unchanged.
+====
 
-== Sequence — range forecast
+== Sequence Diagrams
+
+=== Range Forecast Request Flow
+
 ++++
 <div class="mermaid">
 sequenceDiagram
@@ -66,37 +232,245 @@ sequenceDiagram
 </div>
 ++++
 
-== Data model
-- `sales`:
-* `id uuid` (default `gen_random_uuid()`), `product_name`, `units`, `date`, `created_at timestamptz`
-* Indexes: `idx_sales_date`, `idx_sales_product`, `idx_sales_product_date`, `idx_sales_date_created_at`, `idx_sales_created_at`
-* **V5**: removed unique `(product_name, date)` to support intraday partials.
-- `sales_change_log` (append-only audit):
-* `sale_id → sales(id)`, `product_name`, `date`, `old_units`, `new_units`, `changed_at`, `undone_at`
-* Partial index `idx_scl_prod_date_time_pending` for “latest non-undone” lookups.
-* `idx_scl_sale_id` for audit by sale id.
+=== Basket Analysis Request Flow
 
-== ML details (FastAPI + scikit-learn)
-- **Training** (`POST /ml/train?mode=seed|live`)
-* Pipeline: `OneHotEncoder(handle_unknown='ignore', dense) + GradientBoostingRegressor`
-* Windows:
-- *seed*: `2015-10-01…2024-10-31` → `history_seed.joblib` (+ `.meta.json`)
-- *live*: `2015-10-01…today` → `model_live.joblib` (+ `.meta.json`)
-* Metadata: feature lists, row counts, validation/test metrics, *frozen product universe* (prevents baseline bleed)
-- **Range forecast** (`GET /ml/forecast`)
-* Sums per-day EOD predictions across `[start, end]`, ranks, returns top-K
-- **Intraday (single date)** (`GET /ml/forecast_intraday`) *(optional/admin)*
-* Blends model prior with time-scaled partials; floors early-day fraction; never under observed partials
+++++
+<div class="mermaid">
+sequenceDiagram
+  participant FE as Frontend
+  participant API as Spring API
+  participant DB as PostgreSQL
+  participant PRED as Prediction Service
 
-== Operations (local)
-.**Train (seed)**
+  FE->>API: GET /api/basket/frequently-bought-together?productName=
+  API->>DB: Query basket_analysis table
+  alt Historical product found
+    DB-->>API: Basket analysis records
+    API->>API: Convert to DTOs
+    API-->>FE: {items: [...], isPredicted: false}
+  else New product
+    API->>PRED: Generate predictions
+    PRED-->>API: In-memory predictions
+    API->>API: Convert to DTOs
+    API-->>FE: {items: [...], isPredicted: true}
+  end
+</div>
+++++
+
+== Data Model
+
+=== Core Tables
+
+==== `sales`
+Primary sales data table storing daily sales records.
+
+**Schema:**
+[source,sql]
+----
+CREATE TABLE sales (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_name VARCHAR(255) NOT NULL,
+  units INTEGER NOT NULL,
+  date DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_sales_date ON sales(date);
+CREATE INDEX idx_sales_product ON sales(product_name);
+CREATE INDEX idx_sales_product_date ON sales(product_name, date);
+CREATE INDEX idx_sales_date_created_at ON sales(date, created_at);
+CREATE INDEX idx_sales_created_at ON sales(created_at);
+----
+
+**Key Features:**
+* No unique constraint on `(product_name, date)` - supports multiple intraday entries
+* Automatic UUID generation for primary key
+* Timestamp tracking for audit purposes
+
+==== `sales_change_log`
+Append-only audit log for sales modifications.
+
+**Schema:**
+[source,sql]
+----
+CREATE TABLE sales_change_log (
+  sale_id UUID REFERENCES sales(id),
+  product_name VARCHAR(255) NOT NULL,
+  date DATE NOT NULL,
+  old_units INTEGER,
+  new_units INTEGER NOT NULL,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  undone_at TIMESTAMPTZ
+);
+
+CREATE INDEX idx_scl_prod_date_time_pending 
+  ON sales_change_log(product_name, date, changed_at) 
+  WHERE undone_at IS NULL;
+CREATE INDEX idx_scl_sale_id ON sales_change_log(sale_id);
+----
+
+**Key Features:**
+* Tracks all changes to sales records
+* Supports undo operations via `undone_at` timestamp
+* Partial index for efficient pending change lookups
+
+==== `transactions` and `transaction_items`
+Transaction records for basket analysis.
+
+**Schema:**
+[source,sql]
+----
+CREATE TABLE transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_date DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE transaction_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transaction_id UUID REFERENCES transactions(id),
+  product_name VARCHAR(255) NOT NULL,
+  quantity INTEGER NOT NULL,
+  unit_price DECIMAL(10,2) NOT NULL,
+  discount_percent DECIMAL(5,2)
+);
+----
+
+**Purpose:** Enables association rule mining for frequently bought together analysis.
+
+==== `basket_analysis`
+Frequently bought together associations.
+
+**Schema:**
+[source,sql]
+----
+CREATE TABLE basket_analysis (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  primary_product VARCHAR(255) NOT NULL,
+  associated_product VARCHAR(255) NOT NULL,
+  co_occurrence_count INTEGER NOT NULL,
+  confidence_score DECIMAL(5,4) NOT NULL,
+  support_score DECIMAL(5,4) NOT NULL
+);
+
+CREATE INDEX idx_basket_primary ON basket_analysis(primary_product);
+----
+
+**Metrics:**
+* **Confidence Score**: Probability that associated product is bought with primary product (0.0-1.0)
+* **Support Score**: Frequency of the association in all transactions (0.0-1.0)
+* **Co-occurrence Count**: Number of times items appear together
+
+==== `discounts`
+Active discount records.
+
+**Schema:**
+[source,sql]
+----
+CREATE TABLE discounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_name VARCHAR(255) NOT NULL,
+  discount_percent DECIMAL(5,2) NOT NULL,
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL
+);
+
+CREATE INDEX idx_discounts_product ON discounts(product_name);
+CREATE INDEX idx_discounts_dates ON discounts(start_date, end_date);
+----
+
+==== `discount_effectiveness`
+Historical discount performance data.
+
+**Schema:**
+[source,sql]
+----
+CREATE TABLE discount_effectiveness (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  product_name VARCHAR(255) NOT NULL,
+  discount_percent DECIMAL(5,2) NOT NULL,
+  date DATE NOT NULL,
+  units_sold INTEGER NOT NULL,
+  revenue DECIMAL(10,2) NOT NULL,
+  avg_unit_price DECIMAL(10,2) NOT NULL,
+  sales_lift_percent DECIMAL(5,2) NOT NULL
+);
+
+CREATE INDEX idx_de_product ON discount_effectiveness(product_name);
+CREATE INDEX idx_de_date ON discount_effectiveness(date);
+----
+
+== ML Pipeline Details
+
+=== Training Pipeline
+
+**Endpoint:** `POST /ml/train?mode=seed|live`
+
+**Pipeline Components:**
+* **OneHotEncoder**: Encodes categorical product names (handles unknown products with `ignore` strategy)
+* **GradientBoostingRegressor**: Ensemble learning model for regression predictions
+
+**Training Windows:**
+* **Seed mode**: `2015-10-01` to `2024-10-31` (frozen baseline)
+* **Live mode**: `2015-10-01` to current date (includes new sales)
+
+**Artifacts:**
+* `history_seed.joblib` - Trained seed model
+* `history_seed.meta.json` - Model metadata (features, metrics, product universe)
+* `model_live.joblib` - Trained live model
+* `model_live.meta.json` - Live model metadata
+
+**Metadata Includes:**
+* Feature list (product names)
+* Training row count
+* Validation/test metrics (MAE, RMSE, R²)
+* Frozen product universe (prevents baseline bleed)
+
+=== Forecast Pipeline
+
+**Endpoint:** `GET /ml/forecast?start=YYYY-MM-DD&end=YYYY-MM-DD&mode=seed|live&top_k=K`
+
+**Process:**
+1. Load appropriate model (`seed` or `live`)
+2. Extract features for date range
+3. Generate per-day EOD predictions
+4. Sum predictions across date range
+5. Rank by total predicted units (descending)
+6. Return top-K products with confidence scores
+
+**Confidence Normalization:**
+* Confidence scores are normalized to 0.0-1.0 range
+* Higher confidence indicates more reliable predictions
+* Based on model's internal uncertainty estimates
+
+=== Intraday Forecast (Optional)
+
+**Endpoint:** `GET /ml/forecast_intraday?date_str=YYYY-MM-DD&top_k=K&mode=seed|live&open_hour=8&close_hour=22&as_of=ISO`
+
+**Process:**
+1. Load model and generate prior prediction
+2. Retrieve partial sales for the day (if any)
+3. Blend model prior with time-scaled partials
+4. Apply floor to early-day fraction
+5. Ensure prediction never under observed partials
+
+**Use Case:** Real-time EOD predictions during business hours, adjusting as partial sales data arrives.
+
+== Operations
+
+=== Local Development
+
+==== Train Model (Seed)
 [source,powershell]
 ----
 cd "{project-root}"
 curl.exe -X POST -H "X-ML-Secret: dev-secret" "http://localhost:8000/ml/train?mode=seed"
 ----
 
-.**Forecast (range)**
+**Expected Duration:** 30-60 seconds
+**Output:** Training summary with metrics
+
+==== Forecast (Range)
 [source,powershell]
 ----
 cd "{project-root}"
@@ -104,7 +478,10 @@ curl.exe -H "X-ML-Secret: dev-secret" ^
   "http://localhost:8000/ml/forecast?start=2025-10-01&end=2025-10-31&mode=seed&top_k=10"
 ----
 
-.**Enter a sale**
+**Expected Duration:** < 1 second
+**Output:** Ranked forecast predictions
+
+==== Create Sale Entry
 [source,powershell]
 ----
 cd "{project-root}"
@@ -113,25 +490,197 @@ curl.exe -X POST "http://localhost:8080/api/sales" ^
   -d "{ \"productName\":\"Kit Kat\", \"units\":25, \"date\":\"2025-10-12\" }"
 ----
 
-== Security & robustness
-- ML calls require `X-ML-Secret` (configured via `ML_SECRET`; enforced in ML and sent by Spring `WebClient`).
-- CORS restricted by `app.cors.allowed-origins` (dev: `http://localhost:5173`).
-- Uniform JSON errors via `ApiExceptionHandler`.
-- Timeouts & bounded buffers on ML `WebClient` (see `AppConfig.mlWebClient()`).
-- Negatives clipped, null-safe ranking, strict date validation.
+**Response:** Created sale record with UUID
 
-== Building this doc to HTML (Mermaid included)
+=== Production Operations
+
+==== Model Retraining
+
+**Seed Model:** Retrain when historical data is updated (rarely needed)
+**Live Model:** Retrain periodically (daily/weekly) to incorporate new sales data
+
+**Recommended Schedule:**
+* Seed model: Quarterly or when historical data changes
+* Live model: Daily at off-peak hours (e.g., 2 AM)
+
+==== Data Generation
+
+Synthetic data is automatically generated on first application startup. To regenerate:
+
 [source,powershell]
 ----
-cd "{project-root}"
+curl.exe -X POST "http://localhost:8080/api/basket/generate-simple-synthetic-data?forceRegenerate=true"
+----
+
+**Warning:** This operation deletes existing synthetic data and regenerates from scratch.
+
+==== Monitoring
+
+**Key Metrics to Monitor:**
+* API response times (p50, p95, p99)
+* ML service latency
+* Database query performance
+* Error rates by endpoint
+* Model prediction accuracy (compare predictions to actuals)
+
+**Health Checks:**
+* Backend: `GET /api/health` (if implemented)
+* ML Service: `GET /health`
+* Database: Connection pool status
+
+== Security & Robustness
+
+=== Authentication & Authorization
+
+* **ML Service**: Protected by `X-ML-Secret` header (configured via `ML_SECRET` environment variable)
+* **Backend API**: Public endpoints (consider adding API keys for production)
+* **Database**: Separate read-only user for ML service (`ml_ro`)
+
+=== CORS Configuration
+
+CORS is restricted by `app.cors.allowed-origins`:
+* **Development**: `http://localhost:5173`
+* **Production**: Configure for specific frontend domains only
+
+=== Error Handling
+
+* **Uniform JSON Errors**: All errors returned via `ApiExceptionHandler` with consistent format
+* **Input Validation**: Jakarta Bean Validation on all endpoints
+* **Null Safety**: Defensive null checks throughout codebase
+* **Transaction Management**: Proper transaction boundaries to prevent data corruption
+
+=== Timeouts & Resilience
+
+* **ML Service Timeout**: 90 seconds (configurable via `ml.timeout-ms`)
+* **Bounded Buffers**: WebClient configured with reasonable buffer sizes
+* **Connection Pooling**: Database connection pooling for performance
+* **Retry Logic**: Consider implementing for transient failures
+
+=== Data Validation
+
+* **Date Validation**: Strict ISO-8601 date format validation
+* **Range Validation**: `start` must be <= `end` for forecast requests
+* **Negative Clipping**: All negative predictions clipped to 0
+* **Null Safety**: Null-safe ranking and sorting throughout
+
+== Performance Considerations
+
+=== Database Optimization
+
+* **Indexes**: Comprehensive indexing on frequently queried columns
+* **Query Optimization**: Use indexed columns in WHERE clauses
+* **Connection Pooling**: Configured for optimal connection reuse
+* **Read Replicas**: Consider for read-heavy workloads (ML service queries)
+
+=== Caching Strategy
+
+* **Model Caching**: ML models loaded once and cached in memory
+* **Response Caching**: Consider caching forecast results for frequently requested date ranges
+* **Database Query Caching**: Hibernate second-level cache for read-heavy entities
+
+=== Scalability
+
+* **Horizontal Scaling**: Backend and ML service can be scaled independently
+* **Stateless Design**: Backend is stateless, enabling easy horizontal scaling
+* **Database Scaling**: Consider read replicas for ML service queries
+
+== Troubleshooting
+
+=== Common Issues
+
+==== Mermaid Diagrams Not Rendering
+
+**Symptom:** Diagrams appear as code blocks instead of rendered diagrams
+
+**Solutions:**
+* Ensure `docinfo.html` is in the same directory as HTML output
+* Verify HTML output includes Mermaid CDN script
+* Check browser console for JavaScript errors
+* For GitHub Pages: Ensure `docinfo.html` is committed to repository
+
+==== Database Connection Failures
+
+**Symptom:** Backend fails to start with connection errors
+
+**Solutions:**
+* Verify Docker container is running: `docker ps`
+* Check connection string in `application.properties`
+* Verify database credentials
+* Check network connectivity between services
+
+==== ML Service Timeout Errors
+
+**Symptom:** Forecast requests timeout after 90 seconds
+
+**Solutions:**
+* Check ML service logs for errors
+* Verify model files exist and are valid
+* Check database query performance
+* Increase timeout if needed: `ml.timeout-ms=120000`
+
+==== Empty Forecast Results
+
+**Symptom:** Forecast endpoint returns empty array
+
+**Solutions:**
+* Verify ML model is trained: `POST /api/ml/train?mode=seed`
+* Check historical data exists in database
+* Verify date range is valid (October dates preferred)
+* Check ML service logs for errors
+
+=== Logging
+
+**Backend Logging:**
+* Set `logging.level.com.julian.publixai=DEBUG` for detailed logs
+* Log files: Check `logs/` directory or console output
+
+**ML Service Logging:**
+* Set `LOG_LEVEL=DEBUG` in `.env` for detailed logs
+* Logs output to console (consider file logging for production)
+
+== Building Documentation
+
+=== Generate HTML from AsciiDoc
+
+[source,powershell]
+----
+cd "{project-root}\docs"
+asciidoctor -a docinfo=shared README.adoc
 asciidoctor -a docinfo=shared publix-ai-dashboard.adoc
 ----
 
-== Troubleshooting
-- **Mermaid text missing in PDF**: Use HTML with the included `docinfo.html`, or render via Kroki as PNG/SVG during build for PDF export.
-- **Kroki fallback for offline builds** (optional): `asciidoctor -r asciidoctor-kroki -a kroki-fetch-diagram=true -a kroki-server-url=https://kroki.io publix-ai-dashboard.adoc`
+The generated HTML will include Mermaid diagrams that render client-side using the included `docinfo.html`.
+
+=== GitHub Pages Deployment
+
+For GitHub Pages deployment:
+
+1. **Include docinfo.html**: Ensure `docinfo.html` is in the `docs/` directory
+2. **Mermaid Format**: Use passthrough format (`++++`) for Mermaid diagrams
+3. **HTML Output**: Generated HTML includes Mermaid CDN script from `docinfo.html`
+4. **Directory Structure**: Commit generated HTML files to `docs/` directory
+5. **GitHub Settings**: Configure GitHub Pages to serve from `docs/` directory
+
+=== PDF Export (Optional)
+
+For PDF export with diagrams, use Kroki:
+
+[source,powershell]
+----
+asciidoctor -r asciidoctor-kroki -a kroki-fetch-diagram=true ^
+  -a kroki-server-url=https://kroki.io publix-ai-dashboard.adoc
+----
+
+**Note:** PDF export converts Mermaid diagrams to static images via Kroki service.
 
 == Glossary
-- **Seed model**: Frozen baseline trained on 2015–2024 October rows.
-- **Live model**: Updated model including new rows you enter.
-- **EOD**: End-of-day totals by store close (default 22:00 ET).
+
+* **Seed model**: Frozen baseline trained on 2015–2024 October rows. Provides stable, reproducible predictions for historical analysis.
+* **Live model**: Updated model including new rows entered today and beyond. Adapts to recent sales data for current predictions.
+* **EOD**: End-of-day totals by store close (default 22:00 ET). All forecasts represent complete daily totals.
+* **Confidence score**: ML model's confidence in prediction (0.0-1.0, higher is better). Normalized by ML service.
+* **Support score**: Frequency of association rule in all transactions (0.0-1.0). Used in basket analysis.
+* **Sales lift**: Percentage increase in sales due to discount, calculated from historical discount effectiveness data.
+* **Halloween Readiness Score**: Composite score (0-100) evaluating product readiness across four dimensions: trend, discount, basket, and demand.
+* **DTO**: Data Transfer Object - plain Java objects used for API responses, separate from JPA entities.
+* **Association Rule Mining**: Algorithm for discovering relationships between items (e.g., frequently bought together).

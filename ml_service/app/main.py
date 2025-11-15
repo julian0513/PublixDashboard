@@ -2,24 +2,44 @@ from __future__ import annotations
 
 """
 FastAPI ML Service — Publix AI (production-ready)
+===================================================
+
+Purpose:
+    Production ML service for candy sales forecasting with comprehensive feature engineering.
+    Models incorporate calendar patterns, discount context, and basket analysis for accurate predictions.
+
+Model Features:
+    - Calendar Features: year, month, day, day-of-week, day-of-year, weekend flag, days-to-Halloween
+    - Discount Features: active discount flag, discount percentage, historical discount effectiveness
+    - Basket Features: association count, top confidence, average confidence (frequently bought together)
 
 Guarantees
 ----------
 - All forecasts are **end-of-day totals** by store close (22:00 ET by default).
 - Seed forecasts are **frozen** to the historical window and product universe.
 - Intraday blends model prior with time-scaled partials and never goes below observed.
+- Features are consistently extracted between training and inference (prevents feature mismatch).
 
 Endpoints
 ---------
 POST /ml/train?mode=seed|live
+    Train model with calendar + discount + basket features
+    
 GET  /ml/forecast?start&end&mode=seed|live&top_k
+    Predict EOD totals over date range (sum of daily predictions)
+    
 GET  /ml/forecast_intraday?date_str&as_of?&open_hour?&close_hour?&top_k&mode
+    Intraday EOD forecast for single date (blends model + observed partials)
+    
 GET  /health
-GET  /ml/forecast_historical  (QA-only math baseline; frozen)
+    Health check endpoint
+    
+GET  /ml/forecast_historical
+    QA-only math baseline (frozen historical average)
 
 Security
 --------
-All operational endpoints require X-ML-Secret.
+All operational endpoints require X-ML-Secret header for authentication.
 """
 
 import os
@@ -59,14 +79,14 @@ LIVE_META_PATH = THIS_DIR / "model_live.meta.json"
 
 # Shared training constants / feature builder
 import train
-from features import calendar_grid
+from features import calendar_grid, CAT_COLS, NUM_COLS
 
 SEED_START = train.SEED_START
 SEED_END = train.SEED_END
 
-# Feature columns expected by the pipeline
-CAT_COLS = ["product_name"]
-NUM_COLS = ["year", "month", "day", "dow", "doy", "is_weekend", "days_to_halloween"]
+# Feature columns are now imported from features.py to ensure consistency
+# This includes calendar + discount + basket features
+# CAT_COLS and NUM_COLS are imported above
 
 # Hot-loaded models
 _models: Dict[str, Optional[object]] = {"seed": None, "live": None}
@@ -256,11 +276,14 @@ def _predict_sum_by_product(model: object, start: date, end: date, products: Lis
     """
     Build calendar grid (products × dates), generate features, predict **daily EOD totals**,
     then **sum by product** over [start, end].
+    
+    Features include calendar, discount, and basket analysis context for accurate predictions.
     """
     try:
-        df_inf = calendar_grid(start=start, end=end, products=products)
+        df_inf = calendar_grid(start=start, end=end, products=products, engine=ENGINE)
     except TypeError:
-        df_inf = calendar_grid(products=products, start=start, end=end)
+        # Fallback for backward compatibility with old calendar_grid signature
+        df_inf = calendar_grid(products=products, start=start, end=end, engine=ENGINE)
 
     expected = CAT_COLS + NUM_COLS
     missing = [c for c in expected if c not in df_inf.columns]

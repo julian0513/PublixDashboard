@@ -64,7 +64,9 @@ public class ApiExceptionHandler {
                 req != null ? req.getRequestURI() : "",
                 (details == null || details.isEmpty()) ? null : details
         );
-        return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(body);
+        return ResponseEntity.status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
     }
 
     // ---------- 400: Bad Request family ----------
@@ -109,7 +111,8 @@ public class ApiExceptionHandler {
                 ex.getName(), String.valueOf(ex.getValue()));
         Map<String, Object> details = Map.of(
                 "parameter", ex.getName(),
-                "expectedType", ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown"
+                "expectedType", ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown",
+                "providedValue", String.valueOf(ex.getValue())
         );
         return build(HttpStatus.BAD_REQUEST, "bad_request", msg, req, details);
     }

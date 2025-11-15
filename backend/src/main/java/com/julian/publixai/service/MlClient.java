@@ -81,6 +81,9 @@ public class MlClient {
                     .block();
         } catch (WebClientResponseException e) {
             throw toMlClientException("train", e);
+        } catch (Exception e) {
+            // Catch all other exceptions (timeouts, connection errors, etc.)
+            throw new IllegalStateException("ML service training failed: " + e.getMessage(), e);
         }
     }
 
@@ -101,7 +104,7 @@ public class MlClient {
 
     private static RuntimeException toMlClientException(String op, WebClientResponseException e) {
         String body = e.getResponseBodyAsString();
-        String msg = "%s failed: %d %s".formatted(op, e.getRawStatusCode(), e.getStatusText());
+        String msg = "%s failed: %d %s".formatted(op, e.getStatusCode().value(), e.getStatusText());
         if (body != null && !body.isBlank()) {
             msg += " body=" + body;
         }

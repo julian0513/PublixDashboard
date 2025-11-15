@@ -5,6 +5,7 @@ import ForecastTable from "./components/ForecastTable.jsx";
 import SalesModal from "./components/SalesModal.jsx";
 import Toast from "./components/Toast.jsx";
 import PredictionsModal from "./components/PredictionsModal.jsx";
+import ProductDetailModal from "./components/ProductDetailModal.jsx";
 import publixLogo from "./assets/publix-logo.png";
 
 /** ---------- small utils ---------- */
@@ -97,6 +98,8 @@ export default function App() {
     const [tab, setTab] = useState("predictions"); // "predictions" | "today"
     const [salesOpen, setSalesOpen] = useState(false);
     const [predModalOpen, setPredModalOpen] = useState(false);
+    const [productDetailOpen, setProductDetailOpen] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState(null);
     const [toast, setToast] = useState({ show: false, title: "", message: "" });
 
     /** ---------- today tab state ---------- */
@@ -322,6 +325,11 @@ export default function App() {
                                 <ForecastTable
                                     items={baseline.items}
                                     label={`✨ Historical Baseline for ${fmt(baseline.startDate)} – ${fmt(baseline.endDate)}`}
+                                    mode="seed"
+                                    onProductClick={(productName) => {
+                                        setSelectedProduct(productName);
+                                        setProductDetailOpen(true);
+                                    }}
                                 />
                             </div>
                         </div>
@@ -359,7 +367,17 @@ export default function App() {
                                 )}
                             </div>
 
-                            {list?.length > 0 && <ForecastTable items={list} label={predictionLabel} />}
+                            {list?.length > 0 && (
+                                <ForecastTable
+                                    items={list}
+                                    label={predictionLabel}
+                                    mode={normalizeMode(mode)}
+                                    onProductClick={(productName) => {
+                                        setSelectedProduct(productName);
+                                        setProductDetailOpen(true);
+                                    }}
+                                />
+                            )}
                         </div>
                     </section>
                 ) : (
@@ -468,6 +486,11 @@ export default function App() {
                                 <ForecastTable
                                     items={nowcast.items}
                                     label={`Updated Prediction — ${fmt(nowcast.startDate)} – ${fmt(nowcast.endDate)} (history + current performance)`}
+                                    mode="live"
+                                    onProductClick={(productName) => {
+                                        setSelectedProduct(productName);
+                                        setProductDetailOpen(true);
+                                    }}
                                 />
                             ) : (
                                 <p className="text-sm opacity-70">
@@ -486,6 +509,16 @@ export default function App() {
             {tab === "predictions" && (
                 <PredictionsModal open={predModalOpen} onClose={() => setPredModalOpen(false)} defaultDate={todayDate} defaultTopK={5} />
             )}
+
+            {/* Product Detail Modal */}
+            <ProductDetailModal
+                open={productDetailOpen}
+                onClose={() => {
+                    setProductDetailOpen(false);
+                    setSelectedProduct(null);
+                }}
+                productName={selectedProduct}
+            />
 
             <Toast
                 show={toast.show}

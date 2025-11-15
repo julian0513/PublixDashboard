@@ -60,7 +60,7 @@ export default function Modal({
             <div className="absolute inset-0 flex items-center justify-center p-4">
                 <div
                     ref={dialogRef}
-                    className="w-full max-w-md bg-white rounded-2xl shadow-soft border border-chrome outline-none"
+                    className="w-full max-w-4xl bg-white rounded-2xl shadow-soft border border-chrome outline-none flex flex-col"
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby={title ? headingId : undefined}
@@ -68,16 +68,16 @@ export default function Modal({
                     tabIndex={-1}
                 >
                     {title && (
-                        <div className="px-5 py-4 border-b border-chrome">
+                        <div className="px-5 py-4 border-b border-chrome flex-shrink-0">
                             <h3 id={headingId} className="text-lg font-semibold">
                                 {title}
                             </h3>
                         </div>
                     )}
 
-                    <div className="p-5">{children}</div>
+                    <div className="p-6 flex-1 min-h-0">{children}</div>
 
-                    <div className="px-5 py-4 border-t border-chrome flex gap-3 justify-end">
+                    <div className="px-5 py-4 border-t border-chrome flex gap-3 justify-end flex-shrink-0">
                         <button
                             type="button"
                             className="px-4 py-2 rounded-lg bg-chrome"

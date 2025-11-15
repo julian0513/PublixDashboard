@@ -56,9 +56,12 @@ public class AppConfig {
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024)) // 2 MB
                 .build();
 
+        String baseUrl = props.getBaseUrl() != null ? props.getBaseUrl() : "http://localhost:8000";
+        String secret = props.getSecret() != null ? props.getSecret() : "";
+        
         return WebClient.builder()
-                .baseUrl(props.getBaseUrl())
-                .defaultHeader("X-ML-Secret", props.getSecret())
+                .baseUrl(baseUrl)
+                .defaultHeader("X-ML-Secret", secret)
                 .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .exchangeStrategies(strategies)
                 // Turn any 5xx into a clear exception if callers use exchange() paths
